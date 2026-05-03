@@ -4,11 +4,25 @@
 	"initialSphereResolution": 256,
 	"ui": {
 		"showSourceShapeDropdown": false,
-		"noise": { "default": 0, "min": 0, "max": 9 },
-		"offset": { "default": 0, "min": -1, "max": 1 },
+		"sourceShape": 			{ "label": "Source Shape", "visible": false },
+
+		"noise": 				{ "label": "Noise", "visible": true, "default": 0, "min": 0, "max": 7 },
+		"offset": 				{ "label": "Offset", "visible": false, "default": 0, "min": -1, "max": 1 },
+
 		"showBakeButton": false,
-		"displacement1": { "default": 0, "min": 0, "max": 1 },
-		"displacement2": { "default": 0, "min": 0, "max": 1 }
+		"showResetButton": false,
+
+		"heaviness": 			{ "label": "Heavy ↔ Light", "visible": true, "default": 0, "min": -0.5, "max": 0.5 },		
+		"longevity": 			{ "label": "Longevity", "visible": true, "default": 0, "min": -1.5, "max": 1.5 },
+
+		"displacementTexture1": { "label": "Displacement Texture 1", "visible": true },
+		"displacement1": 		{ "label": "Texture Displacement 1", "visible": true, "default": 0, "min": 0, "max": 0.5 },
+		"displacementTexture2": { "label": "Displacement Texture 2", "visible": true },
+		"displacement2": 		{ "label": "Texture Displacement 2", "visible": true, "default": 0, "min": 0, "max": 0.5 },
+
+		"gradientMode": 		{ "label": "Gradient", "visible": true },
+		"gradientPosition": 	{ "label": "Gradient Position", "visible": true },
+		"glossiness": 			{ "label": "Glossiness", "visible": true }
 	},
 	"simplex": {
 		"baseFrequency": 1.15,
@@ -18,14 +32,12 @@
 		"amplitude": 0.32
 	},
 	"renderViews": {
-		"default": "Current",
+		"default": "Colorful",
+		"control": { "label": "Render View", "visible": true },
 		"depthMap": {
 			"near": 1.5,
 			"far": 5.5,
 			"invert": true
-		},
-		"highVisibility": {
-			"baseGray": 0.72
 		}
 	}
 }

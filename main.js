@@ -104,6 +104,8 @@ const material = new THREE.ShaderMaterial({
     offset: { value: config?.ui?.offset?.default ?? 0.0 },
     displacementAmount1: { value: config?.ui?.displacement1?.default ?? 0.0 },
     displacementAmount2: { value: config?.ui?.displacement2?.default ?? 0.0 },
+    heaviness: { value: config?.ui?.heaviness?.default ?? 0.0 },
+    longevity: { value: config?.ui?.longevity?.default ?? 0.0 },
     gradientMode: { value: 1 },
     gradientPosition: { value: 0.5 },
     glossiness: { value: 0.45 },
@@ -113,7 +115,7 @@ const material = new THREE.ShaderMaterial({
     depthRangeNear: { value: config?.renderViews?.depthMap?.near ?? 1.5 },
     depthRangeFar: { value: config?.renderViews?.depthMap?.far ?? 5.5 },
     depthInvert: { value: (config?.renderViews?.depthMap?.invert ?? true) ? 1.0 : 0.0 },
-    highVisibilityGray: { value: config?.renderViews?.highVisibility?.baseGray ?? 0.72 },
+
     triplanarScale: { value: TRIPLANAR_SCALE },
     simplexBaseFrequency: { value: SIMPLEX_BASE_FREQUENCY },
     simplexOctaves: { value: SIMPLEX_OCTAVES },
@@ -478,7 +480,7 @@ function switchSource(source) {
     if (!userModelBaseGeometry) {
       console.warn("No user model loaded yet. Staying on Sphere.");
       params.sourceShape = "Sphere";
-      sourceController.setValue("Sphere");
+      sourceController?.setValue("Sphere");
       return;
     }
 
@@ -499,15 +501,37 @@ function applyDisplacementCPU(baseGeometry) {
   const displaceNorm = displaced.attributes.displaceNormal;
 
   for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i);
-    const y = pos.getY(i);
-    const z = pos.getZ(i);
+    let x = pos.getX(i);
+    let y = pos.getY(i);
+    let z = pos.getZ(i);
+
+    // Apply heaviness: non-uniform scaling with volume compensation
+    const scaleY = 1.0 + params.heaviness;
+    const scaleXZ = 1.0 - params.heaviness * 0.5;
+    
+    // Normalize height for longevity effects
+    const normalizedHeight = y * 0.5 + 0.5;
+    
+    // Longevity: base flattening and widening from middle to bottom
+    const baseInfluence = Math.max(0, Math.min(1, (0.5 - normalizedHeight) / 0.5));
+    // Reverse effect: narrowing from middle to top
+    const topInfluence = Math.max(0, Math.min(1, (normalizedHeight - 0.5) / 0.5));
+    // Apply opposite effects top and bottom
+    const effectiveScaleXZ = scaleXZ + params.longevity * baseInfluence * 0.3 - params.longevity * topInfluence * 0.3;
+    
+    // Apply scaling
+    x *= effectiveScaleXZ;
+    y *= scaleY;
+    z *= effectiveScaleXZ;
 
     const nx = displaceNorm.getX(i);
     const ny = displaceNorm.getY(i);
     const nz = displaceNorm.getZ(i);
 
-    const noise = fbmSimplex3D(x, y, z) * params.noise + params.offset;
+    // Apply noise with longevity dampening from middle to bottom, amplification from middle to top
+    let noise = fbmSimplex3D(x, y, z) * params.noise + params.offset;
+    const noiseInfluence = 1.0 - params.longevity * 0.8 * baseInfluence + params.longevity * 0.5 * topInfluence;
+    noise *= noiseInfluence;
 
     const ax = Math.abs(nx);
     const ay = Math.abs(ny);
@@ -616,7 +640,7 @@ async function loadUserModel(file) {
     userModelBaseGeometry = merged;
 
     params.sourceShape = "User Model";
-    sourceController.setValue("User Model");
+    sourceController?.setValue("User Model");
     switchSource("User Model");
     console.log("User model ready.");
   } catch (error) {
@@ -643,12 +667,62 @@ fileInput.addEventListener("change", event => {
 
 const gui = new GUI();
 
+function getControlConfig(key) {
+  return config?.ui?.[key] ?? {};
+}
+
+function getControlLabel(key, fallbackLabel) {
+  return getControlConfig(key).label ?? fallbackLabel;
+}
+
+function isControlVisible(key, fallbackVisible = true) {
+  const controlConfig = getControlConfig(key);
+  if (typeof controlConfig.visible === "boolean") {
+    return controlConfig.visible;
+  }
+
+  if (key === "sourceShape") {
+    return Boolean(config?.ui?.showSourceShapeDropdown);
+  }
+
+  return fallbackVisible;
+}
+
+function addSliderControl(parentGui, key, fallbackLabel, fallbackMin, fallbackMax, onChange) {
+  if (!isControlVisible(key)) {
+    return null;
+  }
+
+  const controlConfig = getControlConfig(key);
+  const controller = parentGui.add(params, key, controlConfig.min ?? fallbackMin, controlConfig.max ?? fallbackMax);
+  controller.name(getControlLabel(key, fallbackLabel));
+  if (onChange) {
+    controller.onChange(onChange);
+  }
+  return controller;
+}
+
+function addDropdownControl(parentGui, key, fallbackLabel, options, onChange) {
+  if (!isControlVisible(key)) {
+    return null;
+  }
+
+  const controller = parentGui.add(params, key, options);
+  controller.name(getControlLabel(key, fallbackLabel));
+  if (onChange) {
+    controller.onChange(onChange);
+  }
+  return controller;
+}
+
 const params = {
   sourceShape: "Sphere",
   noise: config?.ui?.noise?.default ?? config?.ui?.noise1?.default ?? 0.2,
   offset: config?.ui?.offset?.default ?? 0.0,
   displacement1: config?.ui?.displacement1?.default ?? 0.0,
   displacement2: config?.ui?.displacement2?.default ?? 0.0,
+  heaviness: config?.ui?.heaviness?.default ?? 0.0,
+  longevity: config?.ui?.longevity?.default ?? 0.0,
   displacementTexture1: defaultTextureName1,
   displacementTexture2: defaultTextureName2,
   gradientMode: defaultGradientMode,
@@ -660,59 +734,71 @@ const params = {
 };
 
 let sourceController = null;
+let noiseController = null;
+let offsetController = null;
+let heavinessController = null;
+let longevityController = null;
+let displacementTexture1Controller = null;
+let displacement1Controller = null;
+let displacementTexture2Controller = null;
+let displacement2Controller = null;
+let gradientModeController = null;
+let gradientPositionController = null;
+let glossinessController = null;
 
-if (config?.ui?.showSourceShapeDropdown) {
-sourceController = gui
-  .add(params, "sourceShape", ["Sphere", "User Model"])
-  .name("Source Shape")
-  .onChange(value => switchSource(value));
-}
+sourceController = addDropdownControl(gui, "sourceShape", "Source Shape", ["Sphere", "User Model"], value => switchSource(value));
 
 gui.add(params, "uploadModel").name("Upload GLB/GLTF");
 
-const noiseController = gui.add(params, "noise", config?.ui?.noise?.min ?? 0, config?.ui?.noise?.max ?? 1).onChange(v => {
+noiseController = addSliderControl(gui, "noise", "Noise", config?.ui?.noise?.min ?? 0, config?.ui?.noise?.max ?? 1, v => {
   material.uniforms.noiseAmp.value = v;
 });
-const offsetController = gui.add(params, "offset", config?.ui?.offset?.min ?? -1, config?.ui?.offset?.max ?? 1).onChange(v => {
+offsetController = addSliderControl(gui, "offset", "Offset", config?.ui?.offset?.min ?? -1, config?.ui?.offset?.max ?? 1, v => {
   material.uniforms.offset.value = v;
 });
+heavinessController = addSliderControl(gui, "heaviness", "Heavy ↔ Light", config?.ui?.heaviness?.min ?? -0.5, config?.ui?.heaviness?.max ?? 0.5, v => {
+  material.uniforms.heaviness.value = v;
+});
+longevityController = addSliderControl(gui, "longevity", "Longevity", config?.ui?.longevity?.min ?? -1.5, config?.ui?.longevity?.max ?? 1.5, v => {
+  material.uniforms.longevity.value = v;
+});
+
+const textureFolder = gui.addFolder("Texture Displacement");
 
 if (textureOptions.length > 0) {
-  const displacementTexture1Controller = gui.add(params, 'displacementTexture1', textureOptions.map(t => t.name)).name('Displacement Texture 1').onChange(v => {
+  displacementTexture1Controller = addDropdownControl(textureFolder, "displacementTexture1", "Displacement Texture 1", textureOptions.map(t => t.name), v => {
     applyDisplacementTexture(v, 1);
   });
-  const displacement1Controller = gui.add(params, "displacement1", config?.ui?.displacement1?.min ?? 0, config?.ui?.displacement1?.max ?? 2).name("Texture Displacement 1").onChange(v => {
+  displacement1Controller = addSliderControl(textureFolder, "displacement1", "Texture Displacement 1", config?.ui?.displacement1?.min ?? 0, config?.ui?.displacement1?.max ?? 2, v => {
     material.uniforms.displacementAmount1.value = v;
   });
 }
 
-if (textureOptions.length > 1) {
-  const displacementTexture2Controller = gui.add(params, 'displacementTexture2', textureOptions.map(t => t.name)).name('Displacement Texture 2').onChange(v => {
-    applyDisplacementTexture(v, 2);
-  });
-} else {
-  const displacementTexture2Controller = gui.add(params, 'displacementTexture2', textureOptions.map(t => t.name)).name('Displacement Texture 2').onChange(v => {
-    applyDisplacementTexture(v, 2);
-  });
-}
+displacementTexture2Controller = addDropdownControl(textureFolder, "displacementTexture2", "Displacement Texture 2", textureOptions.map(t => t.name), v => {
+  applyDisplacementTexture(v, 2);
+});
 
-const displacement2Controller = gui.add(params, "displacement2", config?.ui?.displacement2?.min ?? 0, config?.ui?.displacement2?.max ?? 2).name("Texture Displacement 2").onChange(v => {
+displacement2Controller = addSliderControl(textureFolder, "displacement2", "Texture Displacement 2", config?.ui?.displacement2?.min ?? 0, config?.ui?.displacement2?.max ?? 2, v => {
   material.uniforms.displacementAmount2.value = v;
 });
+textureFolder.open();
 
 if (config?.ui?.showBakeButton) {
   gui.add(params, "bakeDisplacement").name("Bake / Remesh");
 }
-gui.add(params, "resetBase").name("Reset Current Base");
+
+if (config?.ui?.showResetButton !== false) {
+  gui.add(params, "resetBase").name("Reset Current Base");
+}
 
 const gradientFolder = gui.addFolder("Gradient");
-const gradientModeController = gradientFolder.add(params, "gradientMode", ["warmth", "hue spectrum"]).name("Gradient").onChange(value => {
+gradientModeController = addDropdownControl(gradientFolder, "gradientMode", "Gradient", ["warmth", "hue spectrum"], value => {
   material.uniforms.gradientMode.value = value === "hue spectrum" ? 1 : 0;
 });
-const gradientPositionController = gradientFolder.add(params, "gradientPosition", 0, 1).name("Gradient Position").onChange(value => {
+gradientPositionController = addSliderControl(gradientFolder, "gradientPosition", "Gradient Position", 0, 1, value => {
   material.uniforms.gradientPosition.value = value;
 });
-const glossinessController = gradientFolder.add(params, "glossiness", 0, 1).name("Glossiness").onChange(value => {
+glossinessController = addSliderControl(gradientFolder, "glossiness", "Glossiness", 0, 1, value => {
   material.uniforms.glossiness.value = value;
 });
 gradientFolder.open();
@@ -731,7 +817,7 @@ renderModeContainer.style.fontFamily = "monospace";
 renderModeContainer.style.fontSize = "12px";
 
 const renderModeLabel = document.createElement("label");
-renderModeLabel.textContent = "Render View ";
+renderModeLabel.textContent = `${config?.renderViews?.control?.label ?? "Render View"} `;
 
 const renderModeSelect = document.createElement("select");
 renderModeSelect.style.marginLeft = "6px";
@@ -742,10 +828,9 @@ renderModeSelect.style.borderRadius = "4px";
 renderModeSelect.style.padding = "2px 6px";
 
 [
-  { label: "Current", value: "0" },
+  { label: "Colorful", value: "0" },
   { label: "Wireframe", value: "3" },
-  { label: "Depth Map", value: "1" },
-  { label: "High Visibility", value: "2" },
+  { label: "Depth Map (Good Visibility)", value: "1" },
 ].forEach(opt => {
   const option = document.createElement("option");
   option.textContent = opt.label;
@@ -753,11 +838,14 @@ renderModeSelect.style.padding = "2px 6px";
   renderModeSelect.appendChild(option);
 });
 
+if (config?.renderViews?.control?.visible === false) {
+  renderModeContainer.style.display = "none";
+}
+
 // const defaultRenderModeName = config?.renderViews?.default ?? "Current";
 const renderModeNameToValue = {
   Current: "0",
   "Depth Map": "1",
-  "High Visibility": "2",
   Wireframe: "3"
 };
 renderModeSelect.value = renderModeNameToValue[defaultRenderModeName] ?? "0";
@@ -795,6 +883,8 @@ function resetCurrentBase() {
 
   params.noise = config?.ui?.noise?.default ?? config?.ui?.noise1?.default ?? 0.2;
   params.offset = config?.ui?.offset?.default ?? 0.0;
+  params.heaviness = config?.ui?.heaviness?.default ?? 0.0;
+  params.longevity = config?.ui?.longevity?.default ?? 0.0;
   params.displacement1 = config?.ui?.displacement1?.default ?? 0.0;
   params.displacement2 = config?.ui?.displacement2?.default ?? 0.0;
   params.displacementTexture1 = defaultTextureName1;
@@ -805,8 +895,12 @@ function resetCurrentBase() {
 
   noiseController.setValue(params.noise);
   offsetController.setValue(params.offset);
+  heavinessController.setValue(params.heaviness);
+  longevityController.setValue(params.longevity);
   material.uniforms.noiseAmp.value = params.noise;
   material.uniforms.offset.value = params.offset;
+  material.uniforms.heaviness.value = params.heaviness;
+  material.uniforms.longevity.value = params.longevity;
 
   material.uniforms.displacementAmount1.value = params.displacement1;
   material.uniforms.displacementAmount2.value = params.displacement2;

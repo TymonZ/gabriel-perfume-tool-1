@@ -1,0 +1,1 @@
+- intensity of the tiny spikes should also affect their ammount

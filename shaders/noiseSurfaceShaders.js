@@ -11,6 +11,8 @@ uniform float simplexAmplitude;
 uniform int simplexOctaves;
 uniform sampler2D displacementMap1;
 uniform sampler2D displacementMap2;
+uniform float heaviness;
+uniform float longevity;
 
 attribute vec3 displaceNormal;
 varying vec3 vNormal;
@@ -131,12 +133,35 @@ void main() {
   vec3 meshNormal = normalize(normal);
   vec3 safeDisplaceNormal = normalize(displaceNormal);
 
-  float noise = fbmSimplex(position) * noiseAmp + offset;
-
-  float tex1 = sampleTriplanar(position, safeDisplaceNormal, displacementMap1);
-  float tex2 = sampleTriplanar(position, safeDisplaceNormal, displacementMap2);
+  // Apply heaviness: non-uniform scaling with volume compensation
+  // Heaviness positive = compressed (shorter, wider)
+  // Heaviness negative = stretched (taller, thinner)
+  float scaleY = 1.0 + heaviness;
+  float scaleXZ = 1.0 - heaviness * 0.5;
   
-  vec3 displaced = position;
+  // Normalize height for longevity effects (0 = bottom, 1 = top)
+  // Assuming object is centered, so position.y ranges roughly -1 to 1
+  float normalizedHeight = position.y * 0.5 + 0.5;
+  
+  // Longevity: base flattening and widening from middle to bottom
+  float baseInfluence = smoothstep(0.5, 0.0, normalizedHeight);
+  // Reverse effect: narrowing from middle to top
+  float topInfluence = smoothstep(0.5, 1.0, normalizedHeight);
+  // Apply opposite effects top and bottom
+  float effectiveScaleXZ = scaleXZ + longevity * baseInfluence * 0.3 - longevity * topInfluence * 0.3;
+
+  // Apply shape modifiers first so the rest of the deformation works on the updated form
+  vec3 scaledPos = position * vec3(effectiveScaleXZ, scaleY, effectiveScaleXZ);
+  
+  // Apply noise with longevity dampening from middle to bottom, amplification from middle to top
+  float noise = fbmSimplex(scaledPos) * noiseAmp + offset;
+  float noiseInfluence = mix(1.0 - longevity * 0.8, 1.0 + longevity * 0.5, smoothstep(0.0, 1.0, normalizedHeight));
+  noise *= noiseInfluence;
+
+  float tex1 = sampleTriplanar(scaledPos, safeDisplaceNormal, displacementMap1);
+  float tex2 = sampleTriplanar(scaledPos, safeDisplaceNormal, displacementMap2);
+  
+  vec3 displaced = scaledPos;
   displaced += safeDisplaceNormal * noise * 0.18;
   // Center texture values around 0.0 (0.5 = neutral): black -> inward, white -> outward
   displaced += safeDisplaceNormal * (tex1 - 0.5) * displacementAmount1;
@@ -158,7 +183,6 @@ uniform float cameraFar;
 uniform float depthRangeNear;
 uniform float depthRangeFar;
 uniform float depthInvert;
-uniform float highVisibilityGray;
 
 varying vec3 vNormal;
 varying vec3 vWorldPos;
@@ -209,15 +233,6 @@ void main() {
     float depth01 = clamp((linearDepth - depthRangeNear) / max(depthRangeFar - depthRangeNear, 0.0001), 0.0, 1.0);
     float depthView = depthInvert > 0.5 ? (1.0 - depth01) : depth01;
     gl_FragColor = vec4(vec3(depthView), 1.0);
-    return;
-  }
-
-  if (renderMode == 2) {
-    vec3 viewDir = normalize(cameraPosition - vWorldPos);
-    float rim = pow(1.0 - max(dot(n, viewDir), 0.0), 2.5);
-    float lit = 0.35 + diffuse * 0.9;
-    vec3 color = vec3(highVisibilityGray) * lit + vec3(0.22) * rim;
-    gl_FragColor = vec4(color, 1.0);
     return;
   }
 
