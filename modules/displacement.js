@@ -12,6 +12,11 @@ export function applyDisplacementCPU(baseGeometry, params, simplexConstants) {
   const displacementSampler1 = getDisplacementSampler(1);
   const displacementSampler2 = getDisplacementSampler(2);
 
+  const zoom1 = Math.max(0.0001, Number(params?.textureZoom1 ?? 1.0));
+  const zoom2 = Math.max(0.0001, Number(params?.textureZoom2 ?? 1.0));
+  const scale1 = triplanarScale / zoom1;
+  const scale2 = triplanarScale / zoom2;
+
   for (let i = 0; i < pos.count; i++) {
     let x = pos.getX(i);
     let y = pos.getY(i);
@@ -57,15 +62,15 @@ export function applyDisplacementCPU(baseGeometry, params, simplexConstants) {
     const bz = wz / wsum;
 
     // Sample texture 1
-    const sx1 = displacementSampler1 ? displacementSampler1(y * triplanarScale + 0.5, z * triplanarScale + 0.5) : 0.5;
-    const sy1 = displacementSampler1 ? displacementSampler1(x * triplanarScale + 0.5, z * triplanarScale + 0.5) : 0.5;
-    const sz1 = displacementSampler1 ? displacementSampler1(x * triplanarScale + 0.5, y * triplanarScale + 0.5) : 0.5;
+    const sx1 = displacementSampler1 ? displacementSampler1(y * scale1 + 0.5, z * scale1 + 0.5) : 0.5;
+    const sy1 = displacementSampler1 ? displacementSampler1(x * scale1 + 0.5, z * scale1 + 0.5) : 0.5;
+    const sz1 = displacementSampler1 ? displacementSampler1(x * scale1 + 0.5, y * scale1 + 0.5) : 0.5;
     const tex1 = sx1 * bx + sy1 * by + sz1 * bz;
 
     // Sample texture 2
-    const sx2 = displacementSampler2 ? displacementSampler2(y * triplanarScale + 0.5, z * triplanarScale + 0.5) : 0.5;
-    const sy2 = displacementSampler2 ? displacementSampler2(x * triplanarScale + 0.5, z * triplanarScale + 0.5) : 0.5;
-    const sz2 = displacementSampler2 ? displacementSampler2(x * triplanarScale + 0.5, y * triplanarScale + 0.5) : 0.5;
+    const sx2 = displacementSampler2 ? displacementSampler2(y * scale2 + 0.5, z * scale2 + 0.5) : 0.5;
+    const sy2 = displacementSampler2 ? displacementSampler2(x * scale2 + 0.5, z * scale2 + 0.5) : 0.5;
+    const sz2 = displacementSampler2 ? displacementSampler2(x * scale2 + 0.5, y * scale2 + 0.5) : 0.5;
     const tex2 = sx2 * bx + sy2 * by + sz2 * bz;
 
     // Center texture values around 0.0 (0.5 = neutral): black -> inward, white -> outward

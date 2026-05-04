@@ -9,12 +9,32 @@ const SIMPLEX_GAIN = Number(config?.simplex?.gain ?? 0.52);
 const SIMPLEX_AMPLITUDE = Number(config?.simplex?.amplitude ?? 0.32);
 const TRIPLANAR_SCALE = 0.75;
 
+function clamp01(x) {
+  return Math.max(0, Math.min(1, x));
+}
+
+function computeSoftnessFromZoom(index, zoomValue) {
+  const zoomMin = Number(config?.ui?.[`textureZoom${index}`]?.min ?? 0.25);
+  const zoomMax = Number(config?.ui?.[`textureZoom${index}`]?.max ?? 4.0);
+  const softMin = Number(config?.ui?.[`textureSoftness${index}`]?.min ?? 0.0);
+  const softMax = Number(config?.ui?.[`textureSoftness${index}`]?.max ?? 1.0);
+  const denom = Math.max(zoomMax - zoomMin, 0.000001);
+  const t = clamp01((Number(zoomValue) - zoomMin) / denom);
+  return softMin + (softMax - softMin) * t;
+}
+
 const fallbackTexture = new THREE.DataTexture(new Uint8Array([128, 128, 128, 255]), 1, 1);
 fallbackTexture.colorSpace = THREE.NoColorSpace;
 fallbackTexture.needsUpdate = true;
 
 export function createMaterial(camera) {
+  const defaultZoom1 = Number(config?.ui?.textureZoom1?.default ?? 1.0);
+  const defaultZoom2 = Number(config?.ui?.textureZoom2?.default ?? 1.0);
+
   return new THREE.ShaderMaterial({
+    extensions: {
+      shaderTextureLOD: true
+    },
     side: THREE.DoubleSide,
     uniforms: {
       noiseAmp: { value: config?.ui?.noise?.default ?? config?.ui?.noise1?.default ?? 0.2 },
@@ -40,7 +60,15 @@ export function createMaterial(camera) {
       simplexGain: { value: SIMPLEX_GAIN },
       simplexAmplitude: { value: SIMPLEX_AMPLITUDE },
       displacementMap1: { value: fallbackTexture },
-      displacementMap2: { value: fallbackTexture }
+      displacementMap2: { value: fallbackTexture },
+
+      textureSoftness1: { value: computeSoftnessFromZoom(1, defaultZoom1) },
+      textureSoftness2: { value: computeSoftnessFromZoom(2, defaultZoom2) },
+      textureZoom1: { value: defaultZoom1 },
+      textureZoom2: { value: defaultZoom2 },
+      textureSoftnessMaxPx: { value: Number(config?.softness?.textureSoftnessMaxPx ?? 100) },
+      displacementMap1MaxDim: { value: 1.0 },
+      displacementMap2MaxDim: { value: 1.0 }
     },
     vertexShader: noiseSurfaceVertexShader,
     fragmentShader: noiseSurfaceFragmentShader

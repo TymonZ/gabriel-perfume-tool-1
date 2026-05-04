@@ -17,8 +17,12 @@
 
 		"displacementTexture1": { "label": "Displacement Texture 1", "visible": true },
 		"displacement1": 		{ "label": "Texture Displacement 1", "visible": true, "default": 0, "min": 0, "max": 0.5 },
+		"textureSoftness1": 	{ "label": "Texture Softness 1", "visible": false, "default": 0, "min": 0, "max": 1 },
+		"textureZoom1": 		{ "label": "Texture Zoom / Softness 1", "visible": true, "default": 1, "min": 0.25, "max": 100 },
 		"displacementTexture2": { "label": "Displacement Texture 2", "visible": true },
 		"displacement2": 		{ "label": "Texture Displacement 2", "visible": true, "default": 0, "min": 0, "max": 0.5 },
+		"textureSoftness2": 	{ "label": "Texture Softness 2", "visible": false, "default": 0, "min": 0, "max": 1 },
+		"textureZoom2": 		{ "label": "Texture Zoom / Softness 2", "visible": true, "default": 1, "min": 0.25, "max": 100 },
 
 		"gradientMode": 		{ "label": "Gradient", "visible": true },
 		"gradientPosition": 	{ "label": "Gradient Position", "visible": true },
@@ -30,6 +34,9 @@
 		"lacunarity": 2.0,
 		"gain": 0.52,
 		"amplitude": 0.32
+	},
+	"softness": {
+		"textureSoftnessMaxPx": 10
 	},
 	"renderViews": {
 		"default": "Colorful",

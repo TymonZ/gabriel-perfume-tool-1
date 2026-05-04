@@ -77,6 +77,23 @@ export function applyDisplacementTexture(name, textureIndex, textureLoader, onTe
 
   textureLoader.load(found.url, tex => {
     tex.colorSpace = THREE.NoColorSpace;
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+
+    const w = tex?.image?.width ?? 0;
+    const h = tex?.image?.height ?? 0;
+    const isPOT = Boolean(w && h && THREE.MathUtils.isPowerOfTwo(w) && THREE.MathUtils.isPowerOfTwo(h));
+    if (isPOT) {
+      tex.generateMipmaps = true;
+      tex.minFilter = THREE.LinearMipmapLinearFilter;
+    } else {
+      // Avoid incomplete texture in WebGL1; softness will effectively fall back to LOD 0.
+      tex.generateMipmaps = false;
+      tex.minFilter = THREE.LinearFilter;
+    }
+    tex.magFilter = THREE.LinearFilter;
+    tex.needsUpdate = true;
+
     buildTextureSampler(tex, textureIndex);
     console.log(`Applied displacement texture ${textureIndex}:`, name);
     if (onTextureLoaded) {

@@ -3,6 +3,13 @@ uniform float noiseAmp;
 uniform float offset;
 uniform float displacementAmount1;
 uniform float displacementAmount2;
+uniform float textureSoftness1;
+uniform float textureSoftness2;
+uniform float textureZoom1;
+uniform float textureZoom2;
+uniform float textureSoftnessMaxPx;
+uniform float displacementMap1MaxDim;
+uniform float displacementMap2MaxDim;
 uniform float triplanarScale;
 uniform float simplexBaseFrequency;
 uniform float simplexLacunarity;
@@ -18,18 +25,81 @@ attribute vec3 displaceNormal;
 varying vec3 vNormal;
 varying vec3 vWorldPos;
 
-float sampleTriplanar(vec3 pos, vec3 n, sampler2D texMap) {
+float log2Safe(float x) {
+  return log(max(x, 0.000001)) / log(2.0);
+}
+
+vec4 tex2DLodCompat(sampler2D texMap, vec2 uv, float lod) {
+#ifdef GL_EXT_shader_texture_lod
+  return texture2DLodEXT(texMap, uv, lod);
+#else
+  return texture2D(texMap, uv);
+#endif
+}
+
+float computeSoftnessLod(float softness01, float maxSoftnessPx, float texMaxDim) {
+  float s = clamp(softness01, 0.0, 1.0);
+  // Map 0..1 to 1..maxSoftnessPx (1px ~= no additional blur)
+  float softnessPx = mix(1.0, max(1.0, maxSoftnessPx), s);
+  float lod = log2Safe(softnessPx);
+  float maxLod = log2Safe(max(texMaxDim, 1.0));
+  return clamp(lod, 0.0, maxLod);
+}
+
+float sampleRAtLod(sampler2D texMap, vec2 uv, float lod, float maxLod) {
+  float l0 = floor(lod);
+  float l1 = min(l0 + 1.0, maxLod);
+  float t = fract(lod);
+  float a = tex2DLodCompat(texMap, uv, l0).r;
+  float b = tex2DLodCompat(texMap, uv, l1).r;
+  return mix(a, b, t);
+}
+
+float sampleRSoftFallback(sampler2D texMap, vec2 uv, float softness01, float maxSoftnessPx, float texMaxDim) {
+  float s = clamp(softness01, 0.0, 1.0);
+  float radiusPx = max(0.0, maxSoftnessPx) * s;
+  float texel = 1.0 / max(texMaxDim, 1.0);
+  float r = radiusPx * texel;
+
+  // 9-tap tent-ish blur. Wide radii will be approximated but stays stable and gradual.
+  vec2 o1 = vec2(r, 0.0);
+  vec2 o2 = vec2(0.0, r);
+  vec2 o3 = vec2(r, r);
+
+  float c = texture2D(texMap, uv).r * 0.25;
+  c += texture2D(texMap, uv + o1).r * 0.125;
+  c += texture2D(texMap, uv - o1).r * 0.125;
+  c += texture2D(texMap, uv + o2).r * 0.125;
+  c += texture2D(texMap, uv - o2).r * 0.125;
+  c += texture2D(texMap, uv + o3).r * 0.0625;
+  c += texture2D(texMap, uv - o3).r * 0.0625;
+  c += texture2D(texMap, uv + vec2(-r, r)).r * 0.0625;
+  c += texture2D(texMap, uv + vec2(r, -r)).r * 0.0625;
+  return c;
+}
+
+float sampleRSoft(sampler2D texMap, vec2 uv, float softness01, float texMaxDim) {
+#ifdef GL_EXT_shader_texture_lod
+  float maxLod = log2Safe(max(texMaxDim, 1.0));
+  float lod = computeSoftnessLod(softness01, textureSoftnessMaxPx, texMaxDim);
+  return sampleRAtLod(texMap, uv, lod, maxLod);
+#else
+  return sampleRSoftFallback(texMap, uv, softness01, textureSoftnessMaxPx, texMaxDim);
+#endif
+}
+
+float sampleTriplanarSoft(vec3 pos, vec3 n, sampler2D texMap, float softness01, float texMaxDim, float triScale) {
   vec3 an = abs(normalize(n));
   an = pow(an, vec3(4.0));
   an /= max(an.x + an.y + an.z, 0.0001);
 
-  vec2 uvX = fract(pos.yz * triplanarScale + 0.5);
-  vec2 uvY = fract(pos.xz * triplanarScale + 0.5);
-  vec2 uvZ = fract(pos.xy * triplanarScale + 0.5);
+  vec2 uvX = fract(pos.yz * triScale + 0.5);
+  vec2 uvY = fract(pos.xz * triScale + 0.5);
+  vec2 uvZ = fract(pos.xy * triScale + 0.5);
 
-  float tx = texture2D(texMap, uvX).r;
-  float ty = texture2D(texMap, uvY).r;
-  float tz = texture2D(texMap, uvZ).r;
+  float tx = sampleRSoft(texMap, uvX, softness01, texMaxDim);
+  float ty = sampleRSoft(texMap, uvY, softness01, texMaxDim);
+  float tz = sampleRSoft(texMap, uvZ, softness01, texMaxDim);
   return tx * an.x + ty * an.y + tz * an.z;
 }
 
@@ -158,8 +228,10 @@ void main() {
   float noiseInfluence = mix(1.0 - longevity * 0.8, 1.0 + longevity * 0.5, smoothstep(0.0, 1.0, normalizedHeight));
   noise *= noiseInfluence;
 
-  float tex1 = sampleTriplanar(scaledPos, safeDisplaceNormal, displacementMap1);
-  float tex2 = sampleTriplanar(scaledPos, safeDisplaceNormal, displacementMap2);
+  float scale1 = triplanarScale / max(textureZoom1, 0.0001);
+  float scale2 = triplanarScale / max(textureZoom2, 0.0001);
+  float tex1 = sampleTriplanarSoft(scaledPos, safeDisplaceNormal, displacementMap1, textureSoftness1, displacementMap1MaxDim, scale1);
+  float tex2 = sampleTriplanarSoft(scaledPos, safeDisplaceNormal, displacementMap2, textureSoftness2, displacementMap2MaxDim, scale2);
   
   vec3 displaced = scaledPos;
   displaced += safeDisplaceNormal * noise * 0.18;

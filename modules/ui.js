@@ -118,6 +118,10 @@ export function setupTextureFolder(gui, textureOptions, params, controllers, onA
     controllers.displacement1Controller = addSliderControl(textureFolder, "displacement1", "Texture Displacement 1", config?.ui?.displacement1?.min ?? 0, config?.ui?.displacement1?.max ?? 2, params, v => {
       // Material uniform update handled by caller
     });
+
+    controllers.textureZoom1Controller = addSliderControl(textureFolder, "textureZoom1", "Texture Zoom / Softness 1", config?.ui?.textureZoom1?.min ?? 0.25, config?.ui?.textureZoom1?.max ?? 4, params, v => {
+      // Material uniform update handled by caller
+    });
   }
 
   controllers.displacementTexture2Controller = addDropdownControl(textureFolder, "displacementTexture2", "Displacement Texture 2", textureOptions.map(t => t.name), params, v => {
@@ -125,6 +129,10 @@ export function setupTextureFolder(gui, textureOptions, params, controllers, onA
   });
 
   controllers.displacement2Controller = addSliderControl(textureFolder, "displacement2", "Texture Displacement 2", config?.ui?.displacement2?.min ?? 0, config?.ui?.displacement2?.max ?? 2, params, v => {
+    // Material uniform update handled by caller
+  });
+
+  controllers.textureZoom2Controller = addSliderControl(textureFolder, "textureZoom2", "Texture Zoom / Softness 2", config?.ui?.textureZoom2?.min ?? 0.25, config?.ui?.textureZoom2?.max ?? 4, params, v => {
     // Material uniform update handled by caller
   });
   

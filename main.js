@@ -47,6 +47,20 @@ const defaultGradientMode = "hue spectrum";
 const defaultGradientPosition = 0.5;
 const defaultGlossiness = 0.45;
 
+function clamp01(x) {
+  return Math.max(0, Math.min(1, x));
+}
+
+function computeSoftnessFromZoom(index, zoomValue) {
+  const zoomMin = Number(config?.ui?.[`textureZoom${index}`]?.min ?? 0.25);
+  const zoomMax = Number(config?.ui?.[`textureZoom${index}`]?.max ?? 4.0);
+  const softMin = Number(config?.ui?.[`textureSoftness${index}`]?.min ?? 0.0);
+  const softMax = Number(config?.ui?.[`textureSoftness${index}`]?.max ?? 1.0);
+  const denom = Math.max(zoomMax - zoomMin, 0.000001);
+  const t = clamp01((Number(zoomValue) - zoomMin) / denom);
+  return softMin + (softMax - softMin) * t;
+}
+
 // Params object
 const params = {
   sourceShape: "Sphere",
@@ -54,6 +68,10 @@ const params = {
   offset: config?.ui?.offset?.default ?? 0.0,
   displacement1: config?.ui?.displacement1?.default ?? 0.0,
   displacement2: config?.ui?.displacement2?.default ?? 0.0,
+  textureZoom1: config?.ui?.textureZoom1?.default ?? 1.0,
+  textureZoom2: config?.ui?.textureZoom2?.default ?? 1.0,
+  textureSoftness1: computeSoftnessFromZoom(1, config?.ui?.textureZoom1?.default ?? 1.0),
+  textureSoftness2: computeSoftnessFromZoom(2, config?.ui?.textureZoom2?.default ?? 1.0),
   heaviness: config?.ui?.heaviness?.default ?? 0.0,
   longevity: config?.ui?.longevity?.default ?? 0.0,
   displacementTexture1: initialTextureName,
@@ -75,8 +93,10 @@ const controllers = {
   longevityController: null,
   displacementTexture1Controller: null,
   displacement1Controller: null,
+  textureZoom1Controller: null,
   displacementTexture2Controller: null,
   displacement2Controller: null,
+  textureZoom2Controller: null,
   gradientModeController: null,
   gradientPositionController: null,
   glossinessController: null
@@ -152,10 +172,13 @@ function bakeCurrentDisplacement() {
 
 function applyDisplacementTexture(name, textureIndex) {
   textures.applyDisplacementTexture(name, textureIndex, textureLoader, (index, tex) => {
-    material.uniforms.displacementMap1.value = tex;
-    if (textureIndex === 1) {
+    if (index === 1) {
+      material.uniforms.displacementMap1.value = tex;
+      material.uniforms.displacementMap1MaxDim.value = Math.max(tex?.image?.width ?? 1, tex?.image?.height ?? 1);
       currentTextureName = name;
-    } else if (textureIndex === 2) {
+    } else if (index === 2) {
+      material.uniforms.displacementMap2.value = tex;
+      material.uniforms.displacementMap2MaxDim.value = Math.max(tex?.image?.width ?? 1, tex?.image?.height ?? 1);
       currentTextureName2 = name;
     }
   });
@@ -180,6 +203,10 @@ function resetCurrentBase() {
   params.longevity = config?.ui?.longevity?.default ?? 0.0;
   params.displacement1 = config?.ui?.displacement1?.default ?? 0.0;
   params.displacement2 = config?.ui?.displacement2?.default ?? 0.0;
+  params.textureZoom1 = config?.ui?.textureZoom1?.default ?? 1.0;
+  params.textureZoom2 = config?.ui?.textureZoom2?.default ?? 1.0;
+  params.textureSoftness1 = computeSoftnessFromZoom(1, params.textureZoom1);
+  params.textureSoftness2 = computeSoftnessFromZoom(2, params.textureZoom2);
   params.displacementTexture1 = defaultTextureName1;
   params.displacementTexture2 = defaultTextureName2;
   params.gradientMode = defaultGradientMode;
@@ -198,6 +225,10 @@ function resetCurrentBase() {
 
   material.uniforms.displacementAmount1.value = params.displacement1;
   material.uniforms.displacementAmount2.value = params.displacement2;
+  material.uniforms.textureSoftness1.value = params.textureSoftness1;
+  material.uniforms.textureSoftness2.value = params.textureSoftness2;
+  material.uniforms.textureZoom1.value = params.textureZoom1;
+  material.uniforms.textureZoom2.value = params.textureZoom2;
   material.uniforms.gradientMode.value = 1;
   material.uniforms.gradientPosition.value = params.gradientPosition;
   material.uniforms.glossiness.value = params.glossiness;
@@ -217,6 +248,8 @@ function resetCurrentBase() {
 
   controllers.displacement1Controller?.setValue(params.displacement1);
   controllers.displacement2Controller?.setValue(params.displacement2);
+  controllers.textureZoom1Controller?.setValue(params.textureZoom1);
+  controllers.textureZoom2Controller?.setValue(params.textureZoom2);
   controllers.gradientModeController?.setValue(defaultGradientMode);
   controllers.gradientPositionController?.setValue(params.gradientPosition);
   controllers.glossinessController?.setValue(params.glossiness);
@@ -275,6 +308,22 @@ if (controllers.displacement2Controller) {
   });
 }
 
+if (controllers.textureZoom1Controller) {
+  controllers.textureZoom1Controller.onChange(v => {
+    params.textureSoftness1 = computeSoftnessFromZoom(1, v);
+    material.uniforms.textureZoom1.value = v;
+    material.uniforms.textureSoftness1.value = params.textureSoftness1;
+  });
+}
+
+if (controllers.textureZoom2Controller) {
+  controllers.textureZoom2Controller.onChange(v => {
+    params.textureSoftness2 = computeSoftnessFromZoom(2, v);
+    material.uniforms.textureZoom2.value = v;
+    material.uniforms.textureSoftness2.value = params.textureSoftness2;
+  });
+}
+
 // Bake and reset buttons
 if (config?.ui?.showBakeButton) {
   gui.add(params, "bakeDisplacement").name("Bake / Remesh");
@@ -328,8 +377,10 @@ renderModeSelect.dispatchEvent(new Event("change"));
 textures.loadDisplacementTextures(textureLoader, currentTextureName, currentTextureName2, (index, tex) => {
   if (index === 1) {
     material.uniforms.displacementMap1.value = tex;
+    material.uniforms.displacementMap1MaxDim.value = Math.max(tex?.image?.width ?? 1, tex?.image?.height ?? 1);
   } else if (index === 2) {
     material.uniforms.displacementMap2.value = tex;
+    material.uniforms.displacementMap2MaxDim.value = Math.max(tex?.image?.width ?? 1, tex?.image?.height ?? 1);
   }
 });
 
