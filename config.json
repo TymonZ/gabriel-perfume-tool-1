@@ -15,14 +15,30 @@
 		"heaviness": 			{ "label": "Heavy ↔ Light", "visible": true, "default": 0, "min": -0.5, "max": 0.5 },		
 		"longevity": 			{ "label": "Longevity", "visible": true, "default": 0, "min": -1.5, "max": 1.5 },
 
-		"displacementTexture1": { "label": "Displacement Texture 1", "visible": true },
-		"displacement1": 		{ "label": "Texture Displacement 1", "visible": true, "default": 0, "min": 0, "max": 0.5 },
-		"textureSoftness1": 	{ "label": "Texture Softness 1", "visible": false, "default": 0, "min": 0, "max": 1 },
-		"textureZoom1": 		{ "label": "Texture Zoom / Softness 1", "visible": true, "default": 1, "min": 0.25, "max": 100 },
-		"displacementTexture2": { "label": "Displacement Texture 2", "visible": true },
-		"displacement2": 		{ "label": "Texture Displacement 2", "visible": true, "default": 0, "min": 0, "max": 0.5 },
-		"textureSoftness2": 	{ "label": "Texture Softness 2", "visible": false, "default": 0, "min": 0, "max": 1 },
-		"textureZoom2": 		{ "label": "Texture Zoom / Softness 2", "visible": true, "default": 1, "min": 0.25, "max": 100 },
+		"displacementTexture1": { "label": "Dirtyness Texture", "visible": true },
+		"combinedTextureZoom1": {
+			"label": "Clean ↔ Dirty",
+			"visible": true,
+			"default": 0,
+			"min": 0,
+			"max": 1,
+			"midValue": 0.85,
+			"displacement": { "min": 0, "max": 0.5 },
+			"textureSoftness": 	{ "min": 1, "max": 0 },
+			"textureZoom": 		{ "min": 100, "max": 1 }
+		},
+		"displacementTexture2": { "label": "Sharpness Texture", "visible": true },
+		"combinedTextureZoom2": {
+			"label": "Soft ↔ Sharp",
+			"visible": true,
+			"default": 0,
+			"min": 0,
+			"max": 1,
+			"midValue": 0.7,
+			"displacement": { "min": 0, "max": 0.5 },
+			"textureSoftness": 	{ "min": 1, "max": 0 },
+			"textureZoom": 		{ "min": 4, "max": 1 }
+		},
 
 		"gradientMode": 		{ "label": "Gradient", "visible": true },
 		"gradientPosition": 	{ "label": "Gradient Position", "visible": true },

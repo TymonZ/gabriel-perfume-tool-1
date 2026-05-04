@@ -115,11 +115,8 @@ export function setupTextureFolder(gui, textureOptions, params, controllers, onA
     controllers.displacementTexture1Controller = addDropdownControl(textureFolder, "displacementTexture1", "Displacement Texture 1", textureOptions.map(t => t.name), params, v => {
       onApplyTexture(v, 1);
     });
-    controllers.displacement1Controller = addSliderControl(textureFolder, "displacement1", "Texture Displacement 1", config?.ui?.displacement1?.min ?? 0, config?.ui?.displacement1?.max ?? 2, params, v => {
-      // Material uniform update handled by caller
-    });
 
-    controllers.textureZoom1Controller = addSliderControl(textureFolder, "textureZoom1", "Texture Zoom / Softness 1", config?.ui?.textureZoom1?.min ?? 0.25, config?.ui?.textureZoom1?.max ?? 4, params, v => {
+    controllers.combinedTextureZoom1Controller = addSliderControl(textureFolder, "combinedTextureZoom1", config?.ui?.combinedTextureZoom1?.label ?? "Combined Texture Zoom 1", config?.ui?.combinedTextureZoom1?.min ?? 0, config?.ui?.combinedTextureZoom1?.max ?? 1, params, v => {
       // Material uniform update handled by caller
     });
   }
@@ -128,11 +125,7 @@ export function setupTextureFolder(gui, textureOptions, params, controllers, onA
     onApplyTexture(v, 2);
   });
 
-  controllers.displacement2Controller = addSliderControl(textureFolder, "displacement2", "Texture Displacement 2", config?.ui?.displacement2?.min ?? 0, config?.ui?.displacement2?.max ?? 2, params, v => {
-    // Material uniform update handled by caller
-  });
-
-  controllers.textureZoom2Controller = addSliderControl(textureFolder, "textureZoom2", "Texture Zoom / Softness 2", config?.ui?.textureZoom2?.min ?? 0.25, config?.ui?.textureZoom2?.max ?? 4, params, v => {
+  controllers.combinedTextureZoom2Controller = addSliderControl(textureFolder, "combinedTextureZoom2", config?.ui?.combinedTextureZoom2?.label ?? "Combined Texture Zoom 2", config?.ui?.combinedTextureZoom2?.min ?? 0, config?.ui?.combinedTextureZoom2?.max ?? 1, params, v => {
     // Material uniform update handled by caller
   });
   
