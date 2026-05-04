@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { GLTFExporter } from "three/examples/jsm/exporters/GLTFExporter.js";
 import config from './config.json';
 
 // Import modules
@@ -51,6 +52,28 @@ function clamp01(x) {
   return Math.max(0, Math.min(1, x));
 }
 
+function applyMidValueCurve(value, midValue) {
+  const t = clamp01(value);
+  const m = clamp01(midValue ?? 0.5);
+  if (m === 0.5) {
+    return t;
+  }
+  if (m <= 0) {
+    return 0;
+  }
+  if (m >= 1) {
+    return t;
+  }
+
+  if (m > 0.5) {
+    const p = Math.log(1 - m) / Math.log(0.5);
+    return 1 - Math.pow(1 - t, p);
+  }
+
+  const p = Math.log(m) / Math.log(0.5);
+  return Math.pow(t, p);
+}
+
 function computeSoftnessFromZoom(index, zoomValue) {
   const zoomMin = Number(config?.ui?.[`textureZoom${index}`]?.min ?? 0.25);
   const zoomMax = Number(config?.ui?.[`textureZoom${index}`]?.max ?? 4.0);
@@ -66,12 +89,8 @@ const params = {
   sourceShape: "Sphere",
   noise: config?.ui?.noise?.default ?? config?.ui?.noise1?.default ?? 0.2,
   offset: config?.ui?.offset?.default ?? 0.0,
-  displacement1: config?.ui?.displacement1?.default ?? 0.0,
-  displacement2: config?.ui?.displacement2?.default ?? 0.0,
-  textureZoom1: config?.ui?.textureZoom1?.default ?? 1.0,
-  textureZoom2: config?.ui?.textureZoom2?.default ?? 1.0,
-  textureSoftness1: computeSoftnessFromZoom(1, config?.ui?.textureZoom1?.default ?? 1.0),
-  textureSoftness2: computeSoftnessFromZoom(2, config?.ui?.textureZoom2?.default ?? 1.0),
+  combinedTextureZoom1: config?.ui?.combinedTextureZoom1?.default ?? 0.5,
+  combinedTextureZoom2: config?.ui?.combinedTextureZoom2?.default ?? 0.5,
   heaviness: config?.ui?.heaviness?.default ?? 0.0,
   longevity: config?.ui?.longevity?.default ?? 0.0,
   displacementTexture1: initialTextureName,
@@ -81,8 +100,37 @@ const params = {
   glossiness: defaultGlossiness,
   uploadModel: () => fileInput.click(),
   bakeDisplacement: () => bakeCurrentDisplacement(),
-  resetBase: () => resetCurrentBase()
+  resetBase: () => resetCurrentBase(),
+  exportModel: () => exportCurrentModel()
 };
+
+// Compute values from combined sliders
+const combined1 = config?.ui?.combinedTextureZoom1;
+const zoomMin1 = combined1?.textureZoom?.min ?? 0.25;
+const zoomMax1 = combined1?.textureZoom?.max ?? 100;
+const dispMin1 = combined1?.displacement?.min ?? 0;
+const dispMax1 = combined1?.displacement?.max ?? 0.5;
+const softMin1 = combined1?.textureSoftness?.min ?? 0;
+const softMax1 = combined1?.textureSoftness?.max ?? 1;
+
+const midValue1 = combined1?.midValue ?? 0.5;
+const scaledCombined1 = applyMidValueCurve(params.combinedTextureZoom1, midValue1);
+params.displacement1 = dispMin1 + (dispMax1 - dispMin1) * scaledCombined1;
+params.textureZoom1 = zoomMin1 + (zoomMax1 - zoomMin1) * scaledCombined1;
+params.textureSoftness1 = softMin1 + (softMax1 - softMin1) * scaledCombined1;
+
+const combined2 = config?.ui?.combinedTextureZoom2;
+const zoomMin2 = combined2?.textureZoom?.min ?? 0.25;
+const zoomMax2 = combined2?.textureZoom?.max ?? 100;
+const dispMin2 = combined2?.displacement?.min ?? 0;
+const dispMax2 = combined2?.displacement?.max ?? 0.5;
+const softMin2 = combined2?.textureSoftness?.min ?? 0;
+const softMax2 = combined2?.textureSoftness?.max ?? 1;
+const midValue2 = combined2?.midValue ?? 0.5;
+const scaledCombined2 = applyMidValueCurve(params.combinedTextureZoom2, midValue2);
+params.displacement2 = dispMin2 + (dispMax2 - dispMin2) * scaledCombined2;
+params.textureZoom2 = zoomMin2 + (zoomMax2 - zoomMin2) * scaledCombined2;
+params.textureSoftness2 = softMin2 + (softMax2 - softMin2) * scaledCombined2;
 
 // Controllers
 const controllers = {
@@ -92,11 +140,9 @@ const controllers = {
   heavinessController: null,
   longevityController: null,
   displacementTexture1Controller: null,
-  displacement1Controller: null,
-  textureZoom1Controller: null,
+  combinedTextureZoom1Controller: null,
   displacementTexture2Controller: null,
-  displacement2Controller: null,
-  textureZoom2Controller: null,
+  combinedTextureZoom2Controller: null,
   gradientModeController: null,
   gradientPositionController: null,
   glossinessController: null
@@ -170,18 +216,93 @@ function bakeCurrentDisplacement() {
   }
 }
 
-function applyDisplacementTexture(name, textureIndex) {
-  textures.applyDisplacementTexture(name, textureIndex, textureLoader, (index, tex) => {
-    if (index === 1) {
-      material.uniforms.displacementMap1.value = tex;
-      material.uniforms.displacementMap1MaxDim.value = Math.max(tex?.image?.width ?? 1, tex?.image?.height ?? 1);
-      currentTextureName = name;
-    } else if (index === 2) {
-      material.uniforms.displacementMap2.value = tex;
-      material.uniforms.displacementMap2MaxDim.value = Math.max(tex?.image?.width ?? 1, tex?.image?.height ?? 1);
-      currentTextureName2 = name;
+function exportCurrentModel() {
+  const exporter = new GLTFExporter();
+
+  try {
+    // Get the base geometry
+    const base = activeSource === "User Model" ? userModelBaseGeometry : sphereBaseGeometry;
+    if (!base) {
+      console.error("No base geometry to export");
+      return;
     }
-  });
+
+    // Create a comprehensive params object with all current values for baking
+    const bakingParams = {
+      noise: material.uniforms.noiseAmp.value,
+      offset: material.uniforms.offset.value,
+      heaviness: material.uniforms.heaviness.value,
+      longevity: material.uniforms.longevity.value,
+      displacement1: material.uniforms.displacementAmount1.value,
+      displacement2: material.uniforms.displacementAmount2.value,
+      textureZoom1: material.uniforms.textureZoom1.value,
+      textureZoom2: material.uniforms.textureZoom2.value,
+      textureSoftness1: material.uniforms.textureSoftness1.value,
+      textureSoftness2: material.uniforms.textureSoftness2.value
+    };
+
+    console.log("Exporting with parameters:", bakingParams);
+
+    // Bake all effects including noise, displacement, heaviness, longevity, offset, and texture effects
+    const activeSourceData = { baseGeometry: base };
+    const bakedGeometry = displacement.bakeCurrentDisplacement(activeSourceData, bakingParams, simplexConstants);
+
+    // Ensure vertex normals are computed for proper lighting
+    bakedGeometry.computeVertexNormals();
+
+    // Create a material for export
+    const exportMaterial = new THREE.MeshStandardMaterial({
+      color: 0xcccccc,
+      roughness: 0.8,
+      metalness: 0.0,
+      emissive: 0x000000
+    });
+
+    const exportMesh = new THREE.Mesh(bakedGeometry, exportMaterial);
+    
+    // Create a scene to export
+    const exportScene = new THREE.Scene();
+    exportScene.add(exportMesh);
+
+    // Use Promise-based API for better control
+    exporter.parse(
+      exportScene,
+      (result) => {
+        try {
+          // Handle both ArrayBuffer and Blob results
+          let blob;
+          if (result instanceof ArrayBuffer) {
+            blob = new Blob([result], { type: 'application/octet-stream' });
+          } else if (result instanceof Blob) {
+            blob = result;
+          } else {
+            throw new Error("Unexpected export result type");
+          }
+
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = 'perfume-model.glb';
+          link.click();
+          
+          // Clean up
+          setTimeout(() => {
+            URL.revokeObjectURL(url);
+          }, 100);
+          
+          console.log("Model exported successfully with all shader effects baked");
+        } catch (error) {
+          console.error("Export processing error:", error);
+        }
+      },
+      (error) => {
+        console.error("GLTFExporter error:", error);
+      },
+      { binary: true }
+    );
+  } catch (error) {
+    console.error("Export function error:", error);
+  }
 }
 
 function resetCurrentBase() {
@@ -201,12 +322,16 @@ function resetCurrentBase() {
   params.offset = config?.ui?.offset?.default ?? 0.0;
   params.heaviness = config?.ui?.heaviness?.default ?? 0.0;
   params.longevity = config?.ui?.longevity?.default ?? 0.0;
-  params.displacement1 = config?.ui?.displacement1?.default ?? 0.0;
-  params.displacement2 = config?.ui?.displacement2?.default ?? 0.0;
-  params.textureZoom1 = config?.ui?.textureZoom1?.default ?? 1.0;
-  params.textureZoom2 = config?.ui?.textureZoom2?.default ?? 1.0;
-  params.textureSoftness1 = computeSoftnessFromZoom(1, params.textureZoom1);
-  params.textureSoftness2 = computeSoftnessFromZoom(2, params.textureZoom2);
+  params.combinedTextureZoom1 = config?.ui?.combinedTextureZoom1?.default ?? 0.5;
+  params.combinedTextureZoom2 = config?.ui?.combinedTextureZoom2?.default ?? 0.5;
+  const scaledCombined1 = applyMidValueCurve(params.combinedTextureZoom1, midValue1);
+  params.displacement1 = dispMin1 + (dispMax1 - dispMin1) * scaledCombined1;
+  params.textureZoom1 = zoomMin1 + (zoomMax1 - zoomMin1) * scaledCombined1;
+  params.textureSoftness1 = softMin1 + (softMax1 - softMin1) * scaledCombined1;
+  const scaledCombined2 = applyMidValueCurve(params.combinedTextureZoom2, midValue2);
+  params.displacement2 = dispMin2 + (dispMax2 - dispMin2) * scaledCombined2;
+  params.textureZoom2 = zoomMin2 + (zoomMax2 - zoomMin2) * scaledCombined2;
+  params.textureSoftness2 = softMin2 + (softMax2 - softMin2) * scaledCombined2;
   params.displacementTexture1 = defaultTextureName1;
   params.displacementTexture2 = defaultTextureName2;
   params.gradientMode = defaultGradientMode;
@@ -246,10 +371,8 @@ function resetCurrentBase() {
     controllers.displacementTexture2Controller?.setValue(defaultTextureName1);
   }
 
-  controllers.displacement1Controller?.setValue(params.displacement1);
-  controllers.displacement2Controller?.setValue(params.displacement2);
-  controllers.textureZoom1Controller?.setValue(params.textureZoom1);
-  controllers.textureZoom2Controller?.setValue(params.textureZoom2);
+  controllers.combinedTextureZoom1Controller?.setValue(params.combinedTextureZoom1);
+  controllers.combinedTextureZoom2Controller?.setValue(params.combinedTextureZoom2);
   controllers.gradientModeController?.setValue(defaultGradientMode);
   controllers.gradientPositionController?.setValue(params.gradientPosition);
   controllers.glossinessController?.setValue(params.glossiness);
@@ -297,29 +420,28 @@ ui.setupTextureFolder(gui, textures.textureOptions, params, controllers, (name, 
 });
 
 // Add onChange handlers for texture displacement sliders
-if (controllers.displacement1Controller) {
-  controllers.displacement1Controller.onChange(v => {
-    material.uniforms.displacementAmount1.value = v;
-  });
-}
-if (controllers.displacement2Controller) {
-  controllers.displacement2Controller.onChange(v => {
-    material.uniforms.displacementAmount2.value = v;
-  });
-}
+// Removed separate displacement controllers
 
-if (controllers.textureZoom1Controller) {
-  controllers.textureZoom1Controller.onChange(v => {
-    params.textureSoftness1 = computeSoftnessFromZoom(1, v);
-    material.uniforms.textureZoom1.value = v;
+if (controllers.combinedTextureZoom1Controller) {
+  controllers.combinedTextureZoom1Controller.onChange(v => {
+    const scaled = applyMidValueCurve(v, midValue1);
+    params.displacement1 = dispMin1 + (dispMax1 - dispMin1) * scaled;
+    params.textureZoom1 = zoomMin1 + (zoomMax1 - zoomMin1) * scaled;
+    params.textureSoftness1 = softMin1 + (softMax1 - softMin1) * scaled;
+    material.uniforms.displacementAmount1.value = params.displacement1;
+    material.uniforms.textureZoom1.value = params.textureZoom1;
     material.uniforms.textureSoftness1.value = params.textureSoftness1;
   });
 }
 
-if (controllers.textureZoom2Controller) {
-  controllers.textureZoom2Controller.onChange(v => {
-    params.textureSoftness2 = computeSoftnessFromZoom(2, v);
-    material.uniforms.textureZoom2.value = v;
+if (controllers.combinedTextureZoom2Controller) {
+  controllers.combinedTextureZoom2Controller.onChange(v => {
+    const scaled = applyMidValueCurve(v, midValue2);
+    params.displacement2 = dispMin2 + (dispMax2 - dispMin2) * scaled;
+    params.textureZoom2 = zoomMin2 + (zoomMax2 - zoomMin2) * scaled;
+    params.textureSoftness2 = softMin2 + (softMax2 - softMin2) * scaled;
+    material.uniforms.displacementAmount2.value = params.displacement2;
+    material.uniforms.textureZoom2.value = params.textureZoom2;
     material.uniforms.textureSoftness2.value = params.textureSoftness2;
   });
 }
@@ -335,6 +457,9 @@ if (config?.ui?.showResetButton !== false) {
 
 // Gradient folder
 ui.setupGradientFolder(gui, params, controllers);
+
+// Export button at the bottom
+gui.add(params, "exportModel").name("Export GLB/GLTF");
 
 // Add onChange handlers for gradient controls
 if (controllers.gradientModeController) {
