@@ -6,14 +6,14 @@
 		"showSourceShapeDropdown": false,
 		"sourceShape": 			{ "label": "Source Shape", "visible": false },
 
-		"noise": 				{ "label": "Noise", "visible": true, "default": 0, "min": 0, "max": 7 },
-		"offset": 				{ "label": "Offset", "visible": false, "default": 0, "min": -1, "max": 1 },
+		"noise": 				{ "label": "Noise", "visible": true, "default": 0, "min": 0, "max": 4 },
+		"offset": 				{ "label": "Offset", "visible": false, "default": 0.3, "min": -1, "max": 1 },
 
 		"showBakeButton": false,
 		"showResetButton": false,
 
 		"heaviness": 			{ "label": "Heavy ↔ Light", "visible": true, "default": 0, "min": -0.5, "max": 0.5 },		
-		"longevity": 			{ "label": "Longevity", "visible": true, "default": 0, "min": -1.5, "max": 1.5 },
+		"longevity": 			{ "label": "Longevity", "visible": true, "default": 0, "min": -2, "max": 2 },
 
 		"displacementTexture1": { "label": "Dirtyness Texture", "visible": true },
 		"combinedTextureZoom1": {
@@ -53,6 +53,10 @@
 	},
 	"softness": {
 		"textureSoftnessMaxPx": 10
+	},
+	"cutoff": {
+		"topCutoffAmount": 0,
+		"bottomCutoffAmount": 0
 	},
 	"renderViews": {
 		"default": "Colorful",
