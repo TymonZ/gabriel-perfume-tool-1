@@ -1,0 +1,1 @@
+ now, could you plan the architecture of an GLTF export feature? Is it possible to not have any displacement operations mirrored, and instead 100% use the ones we're using to render the geometry? Is there a way to simply capture the current models' topology, bake it at its current state and export as GLTF?

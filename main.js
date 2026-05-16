@@ -1,14 +1,11 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { GLTFExporter } from "three/examples/jsm/exporters/GLTFExporter.js";
 import config from './config.json';
 
 // Import modules
-import * as noise from './modules/noise.js';
 import * as geometry from './modules/geometry.js';
 import * as textures from './modules/textures.js';
 import * as materials from './modules/materials.js';
-import * as displacement from './modules/displacement.js';
 import * as sceneModule from './modules/scene.js';
 import * as ui from './modules/ui.js';
 
@@ -99,9 +96,7 @@ const params = {
   gradientPosition: defaultGradientPosition,
   glossiness: defaultGlossiness,
   uploadModel: () => fileInput.click(),
-  bakeDisplacement: () => bakeCurrentDisplacement(),
-  resetBase: () => resetCurrentBase(),
-  exportModel: () => exportCurrentModel()
+  resetBase: () => resetCurrentBase()
 };
 
 // Compute values from combined sliders
@@ -190,119 +185,6 @@ function switchSource(source) {
 
   activeSource = "Sphere";
   sceneModule.replaceMeshGeometry(mesh, sphereBaseGeometry.clone(), geometry.ensureGeometryAttributes, geometry.validateGeometryVertexCount);
-}
-
-function bakeCurrentDisplacement() {
-  try {
-    const base = activeSource === "User Model" ? userModelBaseGeometry : sphereBaseGeometry;
-    if (!base) {
-      return;
-    }
-
-    const activeSourceData = { baseGeometry: base };
-    const baked = displacement.bakeCurrentDisplacement(activeSourceData, params, simplexConstants);
-
-    if (activeSource === "User Model") {
-      userModelBaseGeometry = baked;
-    } else {
-      sphereBaseGeometry.dispose();
-      sphereBaseGeometry = baked;
-    }
-
-    sceneModule.replaceMeshGeometry(mesh, baked.clone(), geometry.ensureGeometryAttributes, geometry.validateGeometryVertexCount);
-    console.log("Bake complete for source:", activeSource);
-  } catch (error) {
-    console.error("Bake failed:", error);
-  }
-}
-
-function exportCurrentModel() {
-  const exporter = new GLTFExporter();
-
-  try {
-    // Get the base geometry
-    const base = activeSource === "User Model" ? userModelBaseGeometry : sphereBaseGeometry;
-    if (!base) {
-      console.error("No base geometry to export");
-      return;
-    }
-
-    // Create a comprehensive params object with all current values for baking
-    const bakingParams = {
-      noise: material.uniforms.noiseAmp.value,
-      offset: material.uniforms.offset.value,
-      heaviness: material.uniforms.heaviness.value,
-      longevity: material.uniforms.longevity.value,
-      displacement1: material.uniforms.displacementAmount1.value,
-      displacement2: material.uniforms.displacementAmount2.value,
-      textureZoom1: material.uniforms.textureZoom1.value,
-      textureZoom2: material.uniforms.textureZoom2.value,
-      textureSoftness1: material.uniforms.textureSoftness1.value,
-      textureSoftness2: material.uniforms.textureSoftness2.value
-    };
-
-    console.log("Exporting with parameters:", bakingParams);
-
-    // Bake all effects including noise, displacement, heaviness, longevity, offset, and texture effects
-    const activeSourceData = { baseGeometry: base };
-    const bakedGeometry = displacement.bakeCurrentDisplacement(activeSourceData, bakingParams, simplexConstants);
-
-    // Ensure vertex normals are computed for proper lighting
-    bakedGeometry.computeVertexNormals();
-
-    // Create a material for export
-    const exportMaterial = new THREE.MeshStandardMaterial({
-      color: 0xcccccc,
-      roughness: 0.8,
-      metalness: 0.0,
-      emissive: 0x000000
-    });
-
-    const exportMesh = new THREE.Mesh(bakedGeometry, exportMaterial);
-    
-    // Create a scene to export
-    const exportScene = new THREE.Scene();
-    exportScene.add(exportMesh);
-
-    // Use Promise-based API for better control
-    exporter.parse(
-      exportScene,
-      (result) => {
-        try {
-          // Handle both ArrayBuffer and Blob results
-          let blob;
-          if (result instanceof ArrayBuffer) {
-            blob = new Blob([result], { type: 'application/octet-stream' });
-          } else if (result instanceof Blob) {
-            blob = result;
-          } else {
-            throw new Error("Unexpected export result type");
-          }
-
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = url;
-          link.download = 'perfume-model.glb';
-          link.click();
-          
-          // Clean up
-          setTimeout(() => {
-            URL.revokeObjectURL(url);
-          }, 100);
-          
-          console.log("Model exported successfully with all shader effects baked");
-        } catch (error) {
-          console.error("Export processing error:", error);
-        }
-      },
-      (error) => {
-        console.error("GLTFExporter error:", error);
-      },
-      { binary: true }
-    );
-  } catch (error) {
-    console.error("Export function error:", error);
-  }
 }
 
 function resetCurrentBase() {
@@ -446,20 +328,13 @@ if (controllers.combinedTextureZoom2Controller) {
   });
 }
 
-// Bake and reset buttons
-if (config?.ui?.showBakeButton) {
-  gui.add(params, "bakeDisplacement").name("Bake / Remesh");
-}
-
+// Reset button
 if (config?.ui?.showResetButton !== false) {
   gui.add(params, "resetBase").name("Reset Current Base");
 }
 
 // Gradient folder
 ui.setupGradientFolder(gui, params, controllers);
-
-// Export button at the bottom
-gui.add(params, "exportModel").name("Export GLB/GLTF");
 
 // Add onChange handlers for gradient controls
 if (controllers.gradientModeController) {
