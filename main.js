@@ -8,6 +8,8 @@ import * as textures from './modules/textures.js';
 import * as materials from './modules/materials.js';
 import * as sceneModule from './modules/scene.js';
 import * as ui from './modules/ui.js';
+import { bakeDisplacedGeometryWebGL2 } from './modules/bakeGpu.js';
+import { exportGeometryAsGLB } from './modules/exportGltf.js';
 
 
 // ============ INITIALIZATION ============
@@ -96,8 +98,32 @@ const params = {
   gradientPosition: defaultGradientPosition,
   glossiness: defaultGlossiness,
   uploadModel: () => fileInput.click(),
+  exportBakedGLB: async () => exportCurrentBakedGLB(),
   resetBase: () => resetCurrentBase()
 };
+
+function handleDisplacementTextureLoaded(index, tex) {
+  if (index === 1) {
+    material.uniforms.displacementMap1.value = tex;
+    material.uniforms.displacementMap1MaxDim.value = Math.max(tex?.image?.width ?? 1, tex?.image?.height ?? 1);
+  } else if (index === 2) {
+    material.uniforms.displacementMap2.value = tex;
+    material.uniforms.displacementMap2MaxDim.value = Math.max(tex?.image?.width ?? 1, tex?.image?.height ?? 1);
+  }
+}
+
+function applyDisplacementTexture(name, index) {
+  textures.applyDisplacementTexture(name, index, textureLoader, handleDisplacementTextureLoaded);
+}
+
+async function exportCurrentBakedGLB() {
+  try {
+    const baked = bakeDisplacedGeometryWebGL2(renderer, mesh.geometry, material);
+    await exportGeometryAsGLB(baked, { filename: "baked.glb" });
+  } catch (error) {
+    console.error("GLB export failed:", error);
+  }
+}
 
 // Compute values from combined sliders
 const combined1 = config?.ui?.combinedTextureZoom1;
@@ -280,6 +306,8 @@ controllers.sourceController = ui.addDropdownControl(gui, "sourceShape", "Source
 
 gui.add(params, "uploadModel").name("Upload GLB/GLTF");
 
+gui.add(params, "exportBakedGLB").name("Export GLB (Baked)");
+
 controllers.noiseController = ui.addSliderControl(gui, "noise", "Noise", config?.ui?.noise?.min ?? 0, config?.ui?.noise?.max ?? 1, params, v => {
   material.uniforms.noiseAmp.value = v;
 });
@@ -375,13 +403,7 @@ renderModeSelect.dispatchEvent(new Event("change"));
 // ============ TEXTURE LOADING & ANIMATION ============
 
 textures.loadDisplacementTextures(textureLoader, currentTextureName, currentTextureName2, (index, tex) => {
-  if (index === 1) {
-    material.uniforms.displacementMap1.value = tex;
-    material.uniforms.displacementMap1MaxDim.value = Math.max(tex?.image?.width ?? 1, tex?.image?.height ?? 1);
-  } else if (index === 2) {
-    material.uniforms.displacementMap2.value = tex;
-    material.uniforms.displacementMap2MaxDim.value = Math.max(tex?.image?.width ?? 1, tex?.image?.height ?? 1);
-  }
+  handleDisplacementTextureLoaded(index, tex);
 });
 
 sceneModule.startAnimationLoop(mesh, modelRotation, renderer, camera, scene);
